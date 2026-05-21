@@ -82,9 +82,10 @@ class LPFMSimulator:
         if self.config.met is None:
             raise ValueError("Met input required")
         self.met_output = compute_met(self.config.met)
-        self.puffs.clear()
+        self.puffs = []
         self._next_id = 0
         self._elapsed = 0.0
+        self._step_count = 0
         self._release_accum = 0.0
         self._completed = False
 
@@ -153,12 +154,12 @@ class LPFMSimulator:
 
         self._elapsed += dt
         self._completed = self._elapsed >= cfg.duration
+        self._step_count += 1
 
-        # Compute ground concentration grid (every 10 timesteps)
-        every_n = 10
-        frame_num = int(self._elapsed / dt)
+        # Compute ground concentration grid (every 20 timesteps to reduce jerkiness)
+        every_n = 20
         grid = None
-        if frame_num % every_n == 0:
+        if self._step_count % every_n == 0:
             grid = self._compute_grid()
 
         # Serialize puffs

@@ -1,0 +1,97 @@
+scenarios:
+  - id: custom
+    name: "Custom — Manual Input"
+    source: {}
+    weather: {}
+    sim: {}
+    substance_defaults: {}
+
+  - id: gumi-hf-2019
+    name: "2019 Gumi HF Leak"
+    description: "Hydrogen fluoride leak from Hube Global plant, Gumi, Korea (Sep 27, 2019)"
+    source:
+      lat: 36.13
+      lon: 128.34
+      height: 25
+      diameter: 2.0
+      velocity: 10.0
+      exit_temp: 200
+      rate: 500
+      substance: HF
+      half_life: 7200
+    weather:
+      wind_dir: 290
+      wind_speed: 3.2
+      stability: D
+      mix_height: 600
+      temp: 22
+      roughness: 0.5
+    sim:
+      model: LPFM
+      domain_km: 30
+      grid_m: 100
+      n_puffs: 200
+      dt: 5
+      duration: 3600
+      release_type: instantaneous
+      release_duration: 600
+
+  - id: yeosu-cl2-2020
+    name: "2020 Yeosu Cl2 Leak"
+    description: "Chlorine leak at Yeosu National Industrial Complex"
+    source:
+      lat: 34.73
+      lon: 127.68
+      height: 15
+      diameter: 1.0
+      velocity: 8.0
+      exit_temp: 150
+      rate: 300
+      substance: Cl2
+      half_life: 3600
+    weather:
+      wind_dir: 180
+      wind_speed: 4.5
+      stability: D
+      mix_height: 800
+      temp: 25
+      roughness: 0.3
+    sim:
+      model: LPFM
+      domain_km: 20
+      grid_m: 100
+      n_puffs: 150
+      dt: 5
+      duration: 7200
+      release_type: instantaneous
+      release_duration: 300
+
+  - id: seoul-nh3
+    name: "Hypothetical: Seoul NH3"
+    description: "Hypothetical ammonia release in urban Seoul (substance transport accident)"
+    source:
+      lat: 37.56
+      lon: 126.97
+      height: 5
+      diameter: 0.5
+      velocity: 3.0
+      exit_temp: 20
+      rate: 50
+      substance: NH3
+      half_life: 1800
+    weather:
+      wind_dir: 270
+      wind_speed: 3.0
+      stability: D
+      mix_height: 500
+      temp: 15
+      roughness: 2.0
+    sim:
+      model: LPFM
+      domain_km: 10
+      grid_m: 50
+      n_puffs: 100
+      dt: 3
+      duration: 1800
+      release_type: continuous
+      release_duration: 600

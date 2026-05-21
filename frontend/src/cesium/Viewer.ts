@@ -21,8 +21,9 @@ export function createViewer(container: HTMLElement): any {
       timeline: false,
       navigationHelpButton: false,
       navigationInstructionsInitiallyVisible: false,
-      imageryProvider: new Cesium.OpenStreetMapImageryProvider({
-        url: 'https://tile.openstreetmap.org/',
+      imageryProvider: new Cesium.UrlTemplateImageryProvider({
+        url: 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+        maximumZoomLevel: 20,
       }),
       terrainProvider: new Cesium.EllipsoidTerrainProvider(),
     });

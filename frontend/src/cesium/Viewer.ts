@@ -64,15 +64,10 @@ export function createViewer(container: HTMLElement): any {
     }).catch(() => {});
   });
 
-  viewer.camera.flyTo({
-    destination: Cesium.Cartesian3.fromDegrees(DAEJEON_LON, DAEJEON_LAT, 15000),
-    orientation: {
-      heading: Cesium.Math.toRadians(0),
-      pitch: Cesium.Math.toRadians(-45),
-      roll: 0,
-    },
-    duration: 0,
-  });
+  // Camera positioned AWAY from Daejeon, looking AT Daejeon
+  const target = Cesium.Cartesian3.fromDegrees(DAEJEON_LON, DAEJEON_LAT, 0);
+  const offset = new Cesium.Cartesian3(5000, -15000, 12000);
+  viewer.camera.lookAt(target, offset);
 
   return viewer;
 }

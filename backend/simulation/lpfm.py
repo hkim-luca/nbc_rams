@@ -8,6 +8,12 @@ from .meteorology import (
     MetInput, MetOutput, compute_met,
 )
 from .deposition import DepositionModel
+from .terrain import get_terrain
+
+# Source reference for terrain lookup
+REF_LAT = 36.35
+REF_LON = 127.38
+METERS_PER_DEG = 111111.0
 
 
 @dataclass
@@ -76,6 +82,19 @@ class LPFMSimulator:
         self._elapsed = 0.0
         self._release_accum = 0.0
         self._completed = False
+        self._terrain = get_terrain()
+        self._cos_lat = math.cos(math.radians(config.source_lat))
+
+    def _meters_to_latlon(self, x: float, y: float) -> tuple[float, float]:
+        """Convert local (x, y) meters to (lat, lon)."""
+        lat = self.config.source_lat + y / METERS_PER_DEG
+        lon = self.config.source_lon + x / (METERS_PER_DEG * self._cos_lat)
+        return lat, lon
+
+    def _get_ground_elevation(self, x: float, y: float) -> float:
+        """Get ground elevation (m MSL) at puff position."""
+        lat, lon = self._meters_to_latlon(x, y)
+        return self._terrain.get_elevation(lat, lon)
 
     def initialize(self) -> None:
         """Pre-compute met parameters and reset state."""
@@ -117,25 +136,61 @@ class LPFMSimulator:
         v = mo.u_ref * math.sin(mo.wind_dir_rad)
 
         for puff in self.puffs[:]:
-            # Advection
-            puff.x += u * dt
-            puff.y += v * dt
+            # --- Terrain-modified advection ---
+            old_x, old_y = puff.x, puff.y
+            local_lat, local_lon = self._meters_to_latlon(puff.x, puff.y)
 
-            # Turbulent fluctuation (random walk)
-            puff.x += np.random.normal(0, mo.sigma_v * math.sqrt(dt))
-            puff.y += np.random.normal(0, mo.sigma_v * math.sqrt(dt))
+            # Compute local terrain gradient (E-W and N-S slopes)
+            dx_deg = 0.005  # ~500m probe distance
+            e_w = self._terrain.get_elevation(local_lat, local_lon + dx_deg)
+            e_e = self._terrain.get_elevation(local_lat, local_lon - dx_deg)
+            e_n = self._terrain.get_elevation(local_lat + dx_deg, local_lon)
+            e_s = self._terrain.get_elevation(local_lat - dx_deg, local_lon)
+            slope_x = (e_e - e_w) / (2 * dx_deg * 111111)  # E-W slope (m/m)
+            slope_y = (e_n - e_s) / (2 * dx_deg * 111111)  # N-S slope (m/m)
+
+            # Wind direction relative to slope
+            wind_u = math.cos(mo.wind_dir_rad)
+            wind_v = math.sin(mo.wind_dir_rad)
+            wind_slope = wind_u * slope_x + wind_v * slope_y  # >0 = wind against slope
+
+            # Deflection factor: stronger for steeper slopes in wind direction
+            deflect = max(0, min(0.8, wind_slope * 50))
+
+            # Advection with terrain deflection
+            puff.x += u * dt * (1 - deflect * 0.5) + wind_v * deflect * dt * 10
+            puff.y += v * dt * (1 - deflect * 0.5) - wind_u * deflect * dt * 10
+
+            # Terrain elevation change → adjust puff height
+            old_elev = self._get_ground_elevation(old_x, old_y)
+            new_elev = self._get_ground_elevation(puff.x, puff.y)
+            elev_change = new_elev - old_elev
+            if abs(elev_change) > 0.5:
+                puff.z -= elev_change
+            # Orographic lift: upward motion on windward slopes
+            if deflect > 0.1:
+                puff.z += deflect * abs(wind_slope) * dt * 0.5
+
+            # Location-dependent turbulence: look up local roughness
+            local_z0 = self._terrain.get_roughness(local_lat, local_lon)
+            ref_z0 = cfg.met.surface_roughness if cfg.met else 0.1
+            turb_scale = max(0.3, min(2.5, local_z0 / max(ref_z0, 0.01)))
+
+            # Turbulent fluctuation (random walk) — scaled by local roughness
+            puff.x += np.random.normal(0, mo.sigma_v * math.sqrt(dt) * turb_scale)
+            puff.y += np.random.normal(0, mo.sigma_v * math.sqrt(dt) * turb_scale)
 
             # Vertical turbulent fluctuation
             if not self._is_reflected(puff.z, cfg.met.mixing_height):
-                puff.z += np.random.normal(0, mo.sigma_w * math.sqrt(dt))
+                puff.z += np.random.normal(0, mo.sigma_w * math.sqrt(dt) * turb_scale)
             # Reflection at ground and mixing height
             puff.z = max(puff.z, 0.1)
             puff.z = min(puff.z, cfg.met.mixing_height - 0.1)
 
-            # Sigma growth (Taylor dispersion)
-            puff.sig_x = math.sqrt(puff.sig_x**2 + (mo.sigma_v * math.sqrt(dt))**2)
-            puff.sig_y = math.sqrt(puff.sig_y**2 + (mo.sigma_v * math.sqrt(dt))**2)
-            puff.sig_z = math.sqrt(puff.sig_z**2 + (mo.sigma_w * math.sqrt(dt))**2)
+            # Sigma growth — scaled by local roughness
+            puff.sig_x = math.sqrt(puff.sig_x**2 + (mo.sigma_v * math.sqrt(dt) * turb_scale)**2)
+            puff.sig_y = math.sqrt(puff.sig_y**2 + (mo.sigma_v * math.sqrt(dt) * turb_scale)**2)
+            puff.sig_z = math.sqrt(puff.sig_z**2 + (mo.sigma_w * math.sqrt(dt) * turb_scale)**2)
 
             # Chemical decay
             puff.mass = self.deposition.apply_decay(puff.mass, cfg.substance_half_life, dt)
@@ -215,7 +270,11 @@ class LPFMSimulator:
         return z <= 0.1 or z >= mix_h - 0.1
 
     def _compute_grid(self) -> dict:
-        """Compute ground-level concentration grid using vectorized NumPy."""
+        """Compute ground-level concentration grid using vectorized NumPy.
+
+        Accounts for terrain elevation: puff height above ground adjusts
+        as the puff moves over varying terrain.
+        """
         cfg = self.config
         domain_m = cfg.domain_km * 1000
         res = cfg.grid_resolution_m
@@ -227,14 +286,32 @@ class LPFMSimulator:
         lats = lat_center + (np.arange(n) - n // 2) * res / 111111
         lons = lon_center + (np.arange(n) - n // 2) * res / (111111 * cos_lat)
 
+        # Source ground elevation
+        src_elev = self._terrain.get_elevation(lat_center, lon_center)
+
+        # Grid cell ground elevations (coarse approximation)
+        grid_elev = np.zeros((n, n))
+        for i in range(n):
+            for j in range(n):
+                grid_elev[i, j] = self._terrain.get_elevation(float(lats[i]), float(lons[j])) - src_elev
+
         grid = np.zeros((n, n))
         for puff in self.puffs:
             if puff.mass <= 1e-10 or puff.sig_y < 0.1 or puff.sig_z < 0.1:
                 continue
+            puff_elev = self._terrain.get_elevation(
+                lat_center + puff.y / 111111,
+                lon_center + puff.x / (111111 * cos_lat),
+            ) - src_elev
+
+            # Effective z relative to each grid cell's ground
+            z_eff = puff.z - grid_elev + puff_elev
+            z_eff = np.maximum(z_eff, 1.0)  # Minimum 1m above ground
+
             dx = (lons - (lon_center + puff.x / (111111 * cos_lat))) * 111111 * cos_lat
             dy = (lats - (lat_center + puff.y / 111111))[:, None] * 111111
             y_term = np.exp(-0.5 * (dx / puff.sig_y) ** 2) / (np.sqrt(2 * np.pi) * puff.sig_y)
-            z_term = np.exp(-0.5 * (puff.z / puff.sig_z) ** 2) / (np.sqrt(2 * np.pi) * puff.sig_z)
+            z_term = np.exp(-0.5 * (z_eff / puff.sig_z) ** 2) / (np.sqrt(2 * np.pi) * puff.sig_z)
             grid += puff.mass * y_term[np.newaxis, :] * z_term
 
         step = max(1, n // 40)

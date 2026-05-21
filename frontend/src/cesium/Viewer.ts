@@ -20,29 +20,8 @@ export function createViewer(container: HTMLElement): any {
     selectionIndicator: false,
     timeline: false,
     navigationHelpButton: false,
+    terrainProvider: new Cesium.EllipsoidTerrainProvider(),
   });
-
-  // Load DEM terrain
-  function setTerrain(provider: any) {
-    viewer.terrainProvider = provider;
-  }
-
-  // Try Cesium World Terrain (requires Ion token, works on many networks)
-  Cesium.createWorldTerrainAsync()
-    .then(setTerrain)
-    .catch(() => {
-      // Fallback to free terrain tiles (no token needed)
-      try {
-        const tp = new Cesium.CesiumTerrainProvider({
-          url: 'https://s3.amazonaws.com/elevation-tiles-prod/terrain/',
-          requestVertexNormals: false,
-          requestWaterMask: false,
-        });
-        setTerrain(tp);
-      } catch (_e) {
-        // No terrain available
-      }
-    });
 
   viewer.imageryLayers.removeAll();
 
@@ -54,11 +33,9 @@ export function createViewer(container: HTMLElement): any {
     }),
   );
 
-  // Camera controls: right-click = rotate, left-click = pan
+  // Camera: left-click=rotate, right-click=pan, scroll/middle=zoom
   const cc = viewer.scene.screenSpaceCameraController;
-  cc.rotateEventTypes = [Cesium.CameraEventType.RIGHT_DRAG];
-  cc.tiltEventTypes = [Cesium.CameraEventType.RIGHT_DRAG];
-  cc.translateEventTypes = [Cesium.CameraEventType.LEFT_DRAG];
+  cc.translateEventTypes = [Cesium.CameraEventType.RIGHT_DRAG];
   cc.zoomEventTypes = [Cesium.CameraEventType.MIDDLE_DRAG, Cesium.CameraEventType.WHEEL, Cesium.CameraEventType.PINCH];
 
   // Load Korean boundary GeoJSON

@@ -3,12 +3,18 @@ import { createViewer } from './cesium/Viewer';
 import { createInputGroup, bindInputs } from './dashboard/InputPanel';
 import { createMetricsPanel } from './dashboard/MetricsPanel';
 import { connect, disconnect } from './websocket/client';
+import { useSimStore } from './store';
 import { updatePuffs, clearPuffs } from './layers/PuffLayer';
 import { updateConcentration, clearConcentration } from './layers/ConcentrationLayer';
-import { useSimStore } from './store';
 
 const container = document.getElementById('root')!;
-const viewer = createViewer(container);
+const viewer: any = createViewer(container);
+
+if (!viewer) {
+  document.body.innerHTML +=
+    '<div style="position:fixed;top:0;left:0;right:0;background:#d32f2f;color:white;padding:8px;text-align:center;z-index:9999;font-size:13px;">' +
+    'Cesium 3D viewer failed to load. Check browser console for details.</div>';
+}
 
 // Append dashboard panels
 const inputGroup = createInputGroup();
@@ -20,16 +26,14 @@ bindInputs(inputGroup);
 // Start button
 document.getElementById('btn-start')!.addEventListener('click', () => {
   if (useSimStore.getState().running) return;
-  clearPuffs(viewer);
-  clearConcentration(viewer);
+  clearLayers();
   connect();
 });
 
 // Stop button
 document.getElementById('btn-stop')!.addEventListener('click', () => {
   disconnect();
-  clearPuffs(viewer);
-  clearConcentration(viewer);
+  clearLayers();
 });
 
 // Bind UI button states
@@ -40,10 +44,19 @@ useSimStore.subscribe((state) => {
   stopBtn.disabled = !state.running;
 });
 
-// Render loop: watch store for new frames and update Cesium layers
+function clearLayers(): void {
+  if (!viewer) return;
+  viewer.entities.removeAll();
+  while (viewer.imageryLayers.length > 1) {
+    viewer.imageryLayers.remove(viewer.imageryLayers.get(1));
+  }
+}
+
+// Render loop
 let lastFrameT = -1;
 function renderLoop(): void {
   requestAnimationFrame(renderLoop);
+  if (!viewer) return;
   const { currentFrame, running } = useSimStore.getState();
   if (currentFrame && running && currentFrame.t !== lastFrameT) {
     lastFrameT = currentFrame.t;
@@ -55,5 +68,4 @@ function renderLoop(): void {
 }
 renderLoop();
 
-// Expose for debugging
 (window as any).__viewer = viewer;

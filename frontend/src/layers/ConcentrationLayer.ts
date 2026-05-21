@@ -1,18 +1,15 @@
-import {
-  Viewer, SingleTileImageryProvider, ImageryLayer, Rectangle, Math as CesiumMath,
-} from 'cesium';
+declare const Cesium: any;
 import type { FrameData } from '../store';
 
-let heatmapLayer: ImageryLayer | null = null;
+let heatmapLayer: any = null;
 
-export function updateConcentration(viewer: Viewer, frame: FrameData): void {
+export function updateConcentration(viewer: any, frame: FrameData): void {
   if (!frame.grid || !frame.grid.values.length) return;
 
   const { lats, lons, values } = frame.grid;
   const nx = lons.length;
   const ny = lats.length;
 
-  // Build canvas heatmap
   const canvas = document.createElement('canvas');
   canvas.width = nx;
   canvas.height = ny;
@@ -34,7 +31,6 @@ export function updateConcentration(viewer: Viewer, frame: FrameData): void {
       const idx = (j * nx + i) * 4;
 
       if (norm > 0.001) {
-        // Blue → cyan → yellow → red heatmap
         const r = Math.min(255, Math.round(norm * 255));
         const g = Math.min(255, Math.round(norm * 128));
         const b = Math.min(255, Math.round((1 - norm) * 200));
@@ -49,8 +45,7 @@ export function updateConcentration(viewer: Viewer, frame: FrameData): void {
   }
   ctx.putImageData(imageData, 0, 0);
 
-  // Replace or add imagery layer
-  const bounds = Rectangle.fromDegrees(
+  const bounds = Cesium.Rectangle.fromDegrees(
     Math.min(...lons), Math.min(...lats),
     Math.max(...lons), Math.max(...lats),
   );
@@ -60,12 +55,11 @@ export function updateConcentration(viewer: Viewer, frame: FrameData): void {
   }
 
   heatmapLayer = viewer.imageryLayers.addImageryProvider(
-    new SingleTileImageryProvider({ url: canvas.toDataURL(), rectangle: bounds }),
-    0,
+    new Cesium.SingleTileImageryProvider({ url: canvas.toDataURL(), rectangle: bounds }),
   );
 }
 
-export function clearConcentration(viewer: Viewer): void {
+export function clearConcentration(viewer: any): void {
   if (heatmapLayer) {
     viewer.imageryLayers.remove(heatmapLayer, true);
     heatmapLayer = null;

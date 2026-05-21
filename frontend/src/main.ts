@@ -6,10 +6,9 @@ import { connect, disconnect } from './websocket/client';
 import { useSimStore } from './store';
 import { updatePuffs } from './layers/PuffLayer';
 import { updateConcentration, clearConcentration } from './layers/ConcentrationLayer';
-import type { Viewer } from 'cesium';
 
 const container = document.getElementById('root')!;
-const viewer: Viewer | null = createViewer(container);
+const viewer: any = createViewer(container);
 
 const inputGroup = createInputGroup();
 document.body.appendChild(inputGroup);
@@ -28,7 +27,7 @@ document.getElementById('btn-stop')!.addEventListener('click', () => {
 const startBtn = document.getElementById('btn-start') as HTMLButtonElement;
 const stopBtn = document.getElementById('btn-stop') as HTMLButtonElement;
 useSimStore.subscribe((state) => {
-  startBtn.disabled = state.running || state.connected;
+  startBtn.disabled = state.running;
   stopBtn.disabled = !state.running;
 });
 

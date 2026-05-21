@@ -8,3 +8,4 @@ dist/
 .env
 *.pmtiles
 data/terrain/
+.claude/worktrees/

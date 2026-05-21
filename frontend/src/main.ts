@@ -4,7 +4,7 @@ import { createInputGroup, bindInputs } from './dashboard/InputPanel';
 import { createMetricsPanel } from './dashboard/MetricsPanel';
 import { connect, disconnect } from './websocket/client';
 import { useSimStore } from './store';
-import { updatePuffs } from './layers/PuffLayer';
+import { updatePuffs, clearPuffs } from './layers/PuffLayer';
 import { updateConcentration, clearConcentration } from './layers/ConcentrationLayer';
 
 const container = document.getElementById('root')!;
@@ -17,11 +17,18 @@ document.body.appendChild(metricsPanel);
 bindInputs(inputGroup);
 
 document.getElementById('btn-start')!.addEventListener('click', () => {
-  if (useSimStore.getState().running) return;
+  const s = useSimStore.getState();
+  if (s.running) return;
+  s.resetFrames();
+  clearPuffs(viewer);
+  clearConcentration(viewer);
   connect();
 });
+
 document.getElementById('btn-stop')!.addEventListener('click', () => {
   disconnect();
+  clearPuffs(viewer);
+  clearConcentration(viewer);
 });
 
 const startBtn = document.getElementById('btn-start') as HTMLButtonElement;

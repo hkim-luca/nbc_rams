@@ -22,6 +22,28 @@ export function createViewer(container: HTMLElement): any {
     navigationHelpButton: false,
   });
 
+  // Load DEM terrain
+  function setTerrain(provider: any) {
+    viewer.terrainProvider = provider;
+  }
+
+  // Try Cesium World Terrain (requires Ion token, works on many networks)
+  Cesium.createWorldTerrainAsync()
+    .then(setTerrain)
+    .catch(() => {
+      // Fallback to free terrain tiles (no token needed)
+      try {
+        const tp = new Cesium.CesiumTerrainProvider({
+          url: 'https://s3.amazonaws.com/elevation-tiles-prod/terrain/',
+          requestVertexNormals: false,
+          requestWaterMask: false,
+        });
+        setTerrain(tp);
+      } catch (_e) {
+        // No terrain available
+      }
+    });
+
   viewer.imageryLayers.removeAll();
 
   // Satellite base map
@@ -32,21 +54,12 @@ export function createViewer(container: HTMLElement): any {
     }),
   );
 
-  // Set initial view: camera positioned southeast of Daejeon, looking toward Daejeon
-  viewer.camera.setView({
-    destination: Cesium.Cartesian3.fromDegrees(DAEJEON_LON + 0.05, DAEJEON_LAT - 0.15, 25000),
-    orientation: {
-      direction: Cesium.Cartesian3.normalize(
-        Cesium.Cartesian3.subtract(
-          Cesium.Cartesian3.fromDegrees(DAEJEON_LON, DAEJEON_LAT, 0),
-          Cesium.Cartesian3.fromDegrees(DAEJEON_LON + 0.05, DAEJEON_LAT - 0.15, 25000),
-          new Cesium.Cartesian3(),
-        ),
-        new Cesium.Cartesian3(),
-      ),
-      up: Cesium.Cartesian3.clone(Cesium.Cartesian3.UNIT_Z),
-    },
-  });
+  // Camera controls: right-click = rotate, left-click = pan
+  const cc = viewer.scene.screenSpaceCameraController;
+  cc.rotateEventTypes = [Cesium.CameraEventType.RIGHT_DRAG];
+  cc.tiltEventTypes = [Cesium.CameraEventType.RIGHT_DRAG];
+  cc.translateEventTypes = [Cesium.CameraEventType.LEFT_DRAG];
+  cc.zoomEventTypes = [Cesium.CameraEventType.MIDDLE_DRAG, Cesium.CameraEventType.WHEEL, Cesium.CameraEventType.PINCH];
 
   // Load Korean boundary GeoJSON
   const geoUrl = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_0_countries.geojson';
@@ -65,6 +78,22 @@ export function createViewer(container: HTMLElement): any {
     })
     .then((ds: any) => { if (ds) viewer.dataSources.add(ds); })
     .catch(() => {});
+
+  // Camera: positioned southeast of Daejeon, looking toward Daejeon
+  viewer.camera.setView({
+    destination: Cesium.Cartesian3.fromDegrees(DAEJEON_LON + 0.05, DAEJEON_LAT - 0.15, 25000),
+    orientation: {
+      direction: Cesium.Cartesian3.normalize(
+        Cesium.Cartesian3.subtract(
+          Cesium.Cartesian3.fromDegrees(DAEJEON_LON, DAEJEON_LAT, 0),
+          Cesium.Cartesian3.fromDegrees(DAEJEON_LON + 0.05, DAEJEON_LAT - 0.15, 25000),
+          new Cesium.Cartesian3(),
+        ),
+        new Cesium.Cartesian3(),
+      ),
+      up: Cesium.Cartesian3.clone(Cesium.Cartesian3.UNIT_Z),
+    },
+  });
 
   return viewer;
 }

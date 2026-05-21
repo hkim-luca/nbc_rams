@@ -215,30 +215,31 @@ class LPFMSimulator:
         return z <= 0.1 or z >= mix_h - 0.1
 
     def _compute_grid(self) -> dict:
-        """Compute ground-level concentration grid."""
+        """Compute ground-level concentration grid using vectorized NumPy."""
         cfg = self.config
         domain_m = cfg.domain_km * 1000
         res = cfg.grid_resolution_m
-        n = int(domain_m * 2 / res)
-        lats = [cfg.source_lat + (i - n // 2) * res / 111111 for i in range(n)]
-        lons = [cfg.source_lon + (j - n // 2) * res / (111111 * math.cos(math.radians(cfg.source_lat))) for j in range(n)]
+        cos_lat = math.cos(math.radians(cfg.source_lat))
+        n = max(10, min(60, int(domain_m * 2 / res)))
+
+        lat_center = cfg.source_lat
+        lon_center = cfg.source_lon
+        lats = lat_center + (np.arange(n) - n // 2) * res / 111111
+        lons = lon_center + (np.arange(n) - n // 2) * res / (111111 * cos_lat)
 
         grid = np.zeros((n, n))
         for puff in self.puffs:
-            if puff.mass <= 0:
+            if puff.mass <= 1e-10 or puff.sig_y < 0.1 or puff.sig_z < 0.1:
                 continue
-            for i in range(n):
-                dy = (lats[i] - (cfg.source_lat + puff.y / 111111)) * 111111
-                for j in range(n):
-                    dx = (lons[j] - (cfg.source_lon + puff.x / (111111 * math.cos(math.radians(cfg.source_lat))))) * \
-                          111111 * math.cos(math.radians(cfg.source_lat))
-                    y_term = math.exp(-0.5 * (dx / puff.sig_y) ** 2) / (math.sqrt(2 * math.pi) * puff.sig_y)
-                    z_term = math.exp(-0.5 * (0 - puff.z) ** 2 / puff.sig_z ** 2) / \
-                             (math.sqrt(2 * math.pi) * puff.sig_z)
-                    grid[i][j] += puff.mass * y_term * z_term
+            dx = (lons - (lon_center + puff.x / (111111 * cos_lat))) * 111111 * cos_lat
+            dy = (lats - (lat_center + puff.y / 111111))[:, None] * 111111
+            y_term = np.exp(-0.5 * (dx / puff.sig_y) ** 2) / (np.sqrt(2 * np.pi) * puff.sig_y)
+            z_term = np.exp(-0.5 * (puff.z / puff.sig_z) ** 2) / (np.sqrt(2 * np.pi) * puff.sig_z)
+            grid += puff.mass * y_term[np.newaxis, :] * z_term
 
+        step = max(1, n // 40)
         return {
-            "lats": lats[::max(1, n // 50)],
-            "lons": lons[::max(1, n // 50)],
-            "values": grid[::max(1, n // 50), ::max(1, n // 50)].tolist(),
+            "lats": lats[::step].tolist(),
+            "lons": lons[::step].tolist(),
+            "values": grid[::step, ::step].tolist(),
         }

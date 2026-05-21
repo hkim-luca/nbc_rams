@@ -24,7 +24,7 @@ export function createViewer(container: HTMLElement): any {
 
   viewer.imageryLayers.removeAll();
 
-  // Base: Google Satellite (shows land/sea naturally)
+  // Satellite base map
   viewer.imageryLayers.addImageryProvider(
     new Cesium.UrlTemplateImageryProvider({
       url: 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
@@ -32,42 +32,39 @@ export function createViewer(container: HTMLElement): any {
     }),
   );
 
-  // Load accurate Korean administrative boundaries via GeoJSON
-  const geoJsonUrl = 'https://raw.githubusercontent.com/southkorea/southkorea-maps/master/kostat/2018/json/skorea-provinces-geo.json';
-
-  Cesium.GeoJsonDataSource.load(geoJsonUrl, {
-    stroke: Cesium.Color.YELLOW,
-    strokeWidth: 2,
-    fill: Cesium.Color.YELLOW.withAlpha(0.05),
-    clampToGround: true,
-  }).then((dataSource: any) => {
-    viewer.dataSources.add(dataSource);
-  }).catch(() => {
-    // Fallback: load country boundary from Natural Earth if provinces fail
-    Cesium.GeoJsonDataSource.load(
-      'https://d2ad6b4ur7yvpq.cloudfront.net/naturalearth-3.3.0/ne_110m_admin_0_countries.geojson',
-      {
-        stroke: Cesium.Color.YELLOW,
-        strokeWidth: 2,
-        fill: Cesium.Color.YELLOW.withAlpha(0.03),
-        clampToGround: true,
-      }
-    ).then((ds: any) => {
-      // Filter to just South Korea
-      const entity = ds.entities.values.find((e: any) =>
-        e.properties?.name?.getValue() === 'South Korea' ||
-        e.properties?.ISO_A3?.getValue() === 'KOR'
-      );
-      if (entity) {
-        viewer.dataSources.add(ds);
-      }
-    }).catch(() => {});
+  // Set initial view: camera positioned southeast of Daejeon, looking toward Daejeon
+  viewer.camera.setView({
+    destination: Cesium.Cartesian3.fromDegrees(DAEJEON_LON + 0.05, DAEJEON_LAT - 0.15, 25000),
+    orientation: {
+      direction: Cesium.Cartesian3.normalize(
+        Cesium.Cartesian3.subtract(
+          Cesium.Cartesian3.fromDegrees(DAEJEON_LON, DAEJEON_LAT, 0),
+          Cesium.Cartesian3.fromDegrees(DAEJEON_LON + 0.05, DAEJEON_LAT - 0.15, 25000),
+          new Cesium.Cartesian3(),
+        ),
+        new Cesium.Cartesian3(),
+      ),
+      up: Cesium.Cartesian3.clone(Cesium.Cartesian3.UNIT_Z),
+    },
   });
 
-  // Camera positioned AWAY from Daejeon, looking AT Daejeon
-  const target = Cesium.Cartesian3.fromDegrees(DAEJEON_LON, DAEJEON_LAT, 0);
-  const offset = new Cesium.Cartesian3(5000, -15000, 12000);
-  viewer.camera.lookAt(target, offset);
+  // Load Korean boundary GeoJSON
+  const geoUrl = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_0_countries.geojson';
+  fetch(geoUrl)
+    .then(r => r.json())
+    .then((data: any) => {
+      const kor = data.features.find((f: any) =>
+        f.properties?.ISO_A3 === 'KOR' || f.properties?.ADM0_A3 === 'KOR'
+      );
+      if (kor) {
+        return Cesium.GeoJsonDataSource.load(
+          JSON.stringify({ type: 'FeatureCollection', features: [kor] }),
+          { stroke: Cesium.Color.YELLOW, strokeWidth: 3, fill: Cesium.Color.YELLOW.withAlpha(0.04), clampToGround: true }
+        );
+      }
+    })
+    .then((ds: any) => { if (ds) viewer.dataSources.add(ds); })
+    .catch(() => {});
 
   return viewer;
 }

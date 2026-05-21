@@ -15,30 +15,34 @@ app = FastAPI(title="NBC RAMS", version="0.1.0")
 app.include_router(presets_router)
 
 
+async def _step_sim(simulator, loop):
+    """Run a simulation step in a thread to avoid blocking the event loop."""
+    return await loop.run_in_executor(None, simulator.step)
+
+
 async def run_simulation(websocket: WebSocket, config: SimConfig) -> None:
     """Run LPFM simulation and stream frames via WebSocket."""
     simulator = LPFMSimulator(config)
     simulator.initialize()
+    loop = asyncio.get_event_loop()
 
     # Push initial state
-    initial = simulator.step()
+    initial = await _step_sim(simulator, loop)
     await websocket.send_json({
         "type": "frame",
-        "t": initial.t,
-        "puffs": initial.puffs,
-        "grid": initial.grid,
+        "t": initial.t, "puffs": initial.puffs, "grid": initial.grid,
         "max_conc": initial.max_conc,
         "max_conc_lat": initial.max_conc_lat,
         "max_conc_lon": initial.max_conc_lon,
     })
 
     while not simulator.completed:
-        await asyncio.sleep(0.05)  # ~20 fps streaming rate
-        frame = simulator.step()
+        await asyncio.sleep(0.05)
+
+        frame = await _step_sim(simulator, loop)
         puffs = frame.puffs
         if len(puffs) > 500:
-            step = max(1, len(puffs) // 500)
-            puffs = puffs[::step]
+            puffs = puffs[::max(1, len(puffs) // 500)]
 
         await websocket.send_json({
             "type": "frame",
